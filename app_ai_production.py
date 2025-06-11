@@ -13,6 +13,9 @@ from dotenv import load_dotenv
 from llm_handler_production import get_llm_response_sync
 from llm_config_production import llm_config
 
+# Importar memory manager
+from memory_manager import memory_manager
+
 # Cargar variables de entorno
 load_dotenv()
 
@@ -52,8 +55,35 @@ def handle_mention(body, say, logger):
             say("¡Hola! 👋 ¿En qué puedo ayudarte?")
             return
         
-        # Obtener respuesta del LLM
-        response = get_llm_response_sync(clean_text)
+        # MEMORIA: Registrar usuario y mensaje
+        thread_ts = body["event"].get("thread_ts") or body["event"]["ts"]
+        memory_manager.add_user(user)
+        memory_manager.log_conversation(
+            user_id=user,
+            channel_id=channel,
+            role="user",
+            content=clean_text,
+            thread_ts=thread_ts,
+            message_ts=body["event"]["ts"]
+        )
+        
+        # MEMORIA: Obtener contexto previo
+        context = memory_manager.get_context_for_llm(user, channel, max_messages=10)
+        logger.info(f"🧠 Contexto: {len(context)} mensajes")
+        
+        # Obtener respuesta del LLM con contexto
+        response = get_llm_response_sync(clean_text, context=context)
+        
+        # MEMORIA: Guardar respuesta
+        memory_manager.log_conversation(
+            user_id=user,
+            channel_id=channel,
+            role="assistant",
+            content=response,
+            thread_ts=thread_ts,
+            metadata={"provider": llm_config.active_provider}
+        )
+        
         say(response)
         
         logger.info("✅ Respuesta enviada")
@@ -127,8 +157,44 @@ def handle_message_events(body, logger, say):
                     f"🔧 **Modelo**: {llm_config.config['model']}")
                 return
             
-            # Respuesta con IA
-            response = get_llm_response_sync(text)
+            # Comando para ver memoria
+            if text.lower() == "/memory":
+                stats = memory_manager.get_memory_stats()
+                history = memory_manager.get_conversation_history(user, limit=5)
+                say(f"🧠 **Estadísticas de Memoria**\n" +
+                    f"👥 Usuarios: {stats.get('total_users', 0)}\n" +
+                    f"💬 Conversaciones: {stats.get('total_conversations', 0)}\n" +
+                    f"🎯 Contextos activos: {stats.get('active_contexts', 0)}\n" +
+                    f"💾 DB: {stats.get('db_size_mb', 0)} MB\n" +
+                    f"📚 Últimas {len(history)} conversaciones registradas")
+                return
+            
+            # MEMORIA: Registrar mensaje
+            memory_manager.add_user(user)
+            memory_manager.log_conversation(
+                user_id=user,
+                channel_id=event.get("channel"),
+                role="user",
+                content=text,
+                message_ts=event.get("ts")
+            )
+            
+            # MEMORIA: Obtener contexto
+            context = memory_manager.get_context_for_llm(user, event.get("channel"), max_messages=10)
+            logger.info(f"🧠 Contexto DM: {len(context)} mensajes")
+            
+            # Respuesta con IA y contexto
+            response = get_llm_response_sync(text, context=context)
+            
+            # MEMORIA: Guardar respuesta
+            memory_manager.log_conversation(
+                user_id=user,
+                channel_id=event.get("channel"),
+                role="assistant",
+                content=response,
+                metadata={"provider": llm_config.active_provider}
+            )
+            
             say(response)
             
             logger.info("✅ DM respondido")
