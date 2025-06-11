@@ -14,6 +14,9 @@ from dotenv import load_dotenv
 from llm_handler import get_llm_response_sync
 from llm_config import llm_config
 
+# Importar el memory manager
+from memory_manager import memory_manager
+
 # Cargar variables de entorno desde .env
 load_dotenv()
 
@@ -51,17 +54,42 @@ def handle_mention(body, say, logger):
             say("¡Hola! 👋 ¿En qué puedo ayudarte? Puedes preguntarme cualquier cosa.")
             return
         
-        # Obtener respuesta del LLM
+        # Registrar usuario y guardar mensaje del usuario
+        memory_manager.add_user(user)
+        memory_manager.log_conversation(
+            user_id=user,
+            channel_id=channel,
+            role="user",
+            content=clean_text,
+            thread_ts=thread_ts,
+            message_ts=body["event"]["ts"]
+        )
+        
+        # Obtener contexto previo para el LLM
+        context = memory_manager.get_context_for_llm(user, channel, max_messages=10)
+        logger.info(f"🧠 Contexto cargado: {len(context)} mensajes previos")
+        
+        # Obtener respuesta del LLM con contexto
         logger.info(f"🤖 Enviando a LLM: {clean_text}")
         logger.info(f"📡 Proveedor activo: {llm_config.active_provider}")
         
-        response = get_llm_response_sync(clean_text)
+        response = get_llm_response_sync(clean_text, context=context)
+        
+        # Guardar respuesta del bot en memoria
+        memory_manager.log_conversation(
+            user_id=user,
+            channel_id=channel,
+            role="assistant",
+            content=response,
+            thread_ts=thread_ts,
+            metadata={"provider": llm_config.active_provider}
+        )
         
         # Responder en el canal con botones interactivos
         # Si es parte de un hilo, responder en el hilo
         thread_ts = body["event"].get("thread_ts") or body["event"]["ts"]
         say_with_feedback_buttons(say, response, user, thread_ts)
-        logger.info("✅ Respuesta enviada")
+        logger.info("✅ Respuesta enviada y guardada en memoria")
         
     except Exception as e:
         logger.error(f"❌ Error: {e}")
@@ -89,13 +117,36 @@ def handle_hello_command(ack, respond, command, logger):
             respond("¡Hola! 👋 Usa `/hello [tu mensaje]` y te responderé con IA.")
             return
         
+        # Registrar usuario y comando en memoria
+        memory_manager.add_user(user_id)
+        memory_manager.log_conversation(
+            user_id=user_id,
+            channel_id=command.get("channel_id"),
+            role="user",
+            content=f"/hello {text}",
+            metadata={"command": "hello"}
+        )
+        
+        # Obtener contexto previo
+        context = memory_manager.get_context_for_llm(user_id, command.get("channel_id"), max_messages=5)
+        logger.info(f"🧠 Contexto comando cargado: {len(context)} mensajes")
+        
         # Obtener respuesta del LLM
         logger.info(f"🤖 Procesando con IA: {text}")
-        response = get_llm_response_sync(text)
+        response = get_llm_response_sync(text, context=context)
+        
+        # Guardar respuesta del comando
+        memory_manager.log_conversation(
+            user_id=user_id,
+            channel_id=command.get("channel_id"),
+            role="assistant",
+            content=response,
+            metadata={"command": "hello", "provider": llm_config.active_provider}
+        )
         
         # Responder con botones de feedback
         respond_with_feedback_buttons(respond, response, user_id)
-        logger.info("✅ Comando procesado")
+        logger.info("✅ Comando procesado y guardado en memoria")
         
     except Exception as e:
         logger.error(f"❌ Error: {e}")
@@ -147,13 +198,47 @@ def handle_message_events(body, logger, say):
                     say(f"❌ Proveedor no válido. Usa: anthropic, openrouter, o openai")
                 return
             
+            if text.lower() == "/memory":
+                stats = memory_manager.get_memory_stats()
+                history = memory_manager.get_conversation_history(user, limit=5)
+                say(f"🧠 **Estadísticas de Memoria**\n" +
+                    f"👥 Usuarios registrados: {stats.get('total_users', 0)}\n" +
+                    f"💬 Conversaciones totales: {stats.get('total_conversations', 0)}\n" +
+                    f"🎯 Contextos activos: {stats.get('active_contexts', 0)}\n" +
+                    f"💾 Tamaño DB: {stats.get('db_size_mb', 0)} MB\n" +
+                    f"📚 Tus últimas {len(history)} conversaciones registradas")
+                return
+            
+            # Registrar usuario y mensaje en memoria
+            memory_manager.add_user(user)
+            memory_manager.log_conversation(
+                user_id=user,
+                channel_id=event.get("channel"),
+                role="user",
+                content=text,
+                message_ts=event.get("ts")
+            )
+            
+            # Obtener contexto para DM
+            context = memory_manager.get_context_for_llm(user, event.get("channel"), max_messages=10)
+            logger.info(f"🧠 Contexto DM cargado: {len(context)} mensajes")
+            
             # Respuesta con IA
             logger.info(f"🤖 Procesando con {llm_config.active_provider}")
-            response = get_llm_response_sync(text)
+            response = get_llm_response_sync(text, context=context)
+            
+            # Guardar respuesta en memoria
+            memory_manager.log_conversation(
+                user_id=user,
+                channel_id=event.get("channel"),
+                role="assistant",
+                content=response,
+                metadata={"provider": llm_config.active_provider}
+            )
             
             # En DMs, usar botones de feedback simples
             say_with_feedback_buttons(say, response, user)
-            logger.info("✅ Respuesta enviada")
+            logger.info("✅ Respuesta DM enviada y guardada en memoria")
         
     except Exception as e:
         logger.error(f"❌ Error: {e}")
