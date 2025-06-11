@@ -35,7 +35,7 @@ app = App(token=os.environ.get("SLACK_BOT_TOKEN"))
 # MANEJO DE MENCIONES (@bot) CON IA
 # ============================================================================
 @app.event("app_mention")
-def handle_mention(body, say, logger):
+def handle_mention(body, say, client, logger):
     """Responde a menciones con IA"""
     try:
         user = body["event"]["user"]
@@ -52,7 +52,11 @@ def handle_mention(body, say, logger):
             clean_text = re.sub(r'<@[A-Z0-9]+>', '', text).strip()
         
         if not clean_text:
-            say("¡Hola! 👋 ¿En qué puedo ayudarte?")
+            # Respuesta con botones interactivos
+            say({
+                "text": "¡Hola! 👋",
+                "blocks": create_help_blocks()
+            })
             return
         
         # MEMORIA: Registrar usuario y mensaje
@@ -84,7 +88,34 @@ def handle_mention(body, say, logger):
             metadata={"provider": llm_config.active_provider}
         )
         
-        say(response)
+        # QUICK WIN: Responder en hilo si es parte de uno
+        if body["event"].get("thread_ts"):
+            say(response, thread_ts=body["event"]["thread_ts"])
+        else:
+            say(response)
+        
+        # QUICK WIN: Reacción automática según contexto
+        try:
+            if any(word in clean_text.lower() for word in ['gracias', 'thank']):
+                client.reactions_add(
+                    channel=channel,
+                    timestamp=body["event"]["ts"],
+                    name="heart"
+                )
+            elif any(word in clean_text.lower() for word in ['problema', 'error', 'bug']):
+                client.reactions_add(
+                    channel=channel,
+                    timestamp=body["event"]["ts"],
+                    name="wrench"
+                )
+            elif any(word in clean_text.lower() for word in ['bueno', 'excelente', 'genial']):
+                client.reactions_add(
+                    channel=channel,
+                    timestamp=body["event"]["ts"],
+                    name="thumbsup"
+                )
+        except Exception as reaction_error:
+            logger.warning(f"⚠️ Error agregando reacción: {reaction_error}")
         
         logger.info("✅ Respuesta enviada")
         
@@ -96,11 +127,130 @@ def handle_mention(body, say, logger):
             pass
 
 # ============================================================================
+# QUICK WINS: BOTONES INTERACTIVOS
+# ============================================================================
+
+def create_help_blocks():
+    """Crea bloques con botones para help menu"""
+    return [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "🤖 *¿En qué puedo ayudarte?*\nElige una opción o escríbeme directamente:"
+            }
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "📊 Estado del Bot"
+                    },
+                    "value": "bot_status",
+                    "action_id": "button_bot_status"
+                },
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "🧠 Memoria"
+                    },
+                    "value": "memory_stats",
+                    "action_id": "button_memory_stats"
+                },
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "💡 Tips de Uso"
+                    },
+                    "value": "usage_tips",
+                    "action_id": "button_usage_tips"
+                }
+            ]
+        }
+    ]
+
+@app.action("button_bot_status")
+def handle_bot_status_button(ack, body, client, logger):
+    """Maneja click del botón de estado"""
+    try:
+        ack()
+        user_id = body["user"]["id"]
+        
+        # Enviar mensaje efímero con estado
+        client.chat_postEphemeral(
+            channel=body["channel"]["id"],
+            user=user_id,
+            text=f"🟢 *Bot Estado: Activo*\n" +
+                 f"🤖 Proveedor: OpenRouter\n" +
+                 f"🔧 Modelo: {llm_config.config['model']}\n" +
+                 f"💾 Memoria: Activada\n" +
+                 f"⚡ Funciones: Todas operativas"
+        )
+        
+        logger.info(f"✅ Estado enviado a {user_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error en botón estado: {e}")
+
+@app.action("button_memory_stats")
+def handle_memory_stats_button(ack, body, client, logger):
+    """Maneja click del botón de memoria"""
+    try:
+        ack()
+        user_id = body["user"]["id"]
+        
+        stats = memory_manager.get_memory_stats()
+        
+        client.chat_postEphemeral(
+            channel=body["channel"]["id"],
+            user=user_id,
+            text=f"🧠 *Estadísticas de Memoria*\n" +
+                 f"👥 Usuarios: {stats.get('total_users', 0)}\n" +
+                 f"💬 Conversaciones: {stats.get('total_conversations', 0)}\n" +
+                 f"🎯 Contextos activos: {stats.get('active_contexts', 0)}\n" +
+                 f"💾 DB: {stats.get('db_size_mb', 0)} MB"
+        )
+        
+        logger.info(f"✅ Memoria stats enviadas a {user_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error en botón memoria: {e}")
+
+@app.action("button_usage_tips")
+def handle_usage_tips_button(ack, body, client, logger):
+    """Maneja click del botón de tips"""
+    try:
+        ack()
+        user_id = body["user"]["id"]
+        
+        client.chat_postEphemeral(
+            channel=body["channel"]["id"],
+            user=user_id,
+            text="💡 *Tips de Uso*\n" +
+                 "• Menciónala con `@dona` para hacer preguntas\n" +
+                 "• Habla en DM para conversaciones privadas\n" +
+                 "• Tengo memoria: recuerdo conversaciones anteriores\n" +
+                 "• Uso `/memory` para ver estadísticas\n" +
+                 "• Respondo en hilos para mantener contexto\n" +
+                 "• Reacciono con emojis según el contexto"
+        )
+        
+        logger.info(f"✅ Tips enviados a {user_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error en botón tips: {e}")
+
+# ============================================================================
 # COMANDO SLASH CON IA
 # ============================================================================
 @app.command("/hello")
 def handle_hello_command(ack, respond, command, logger):
-    """Comando slash con IA"""
+    """Comando slash con IA y botones interactivos"""
     try:
         ack()
         
@@ -110,7 +260,11 @@ def handle_hello_command(ack, respond, command, logger):
         logger.info(f"💬 Comando /hello de {user_id}")
         
         if not text:
-            respond("¡Hola! 👋 Usa `/hello [tu mensaje]` y te responderé con IA.")
+            # Mostrar menú interactivo
+            respond({
+                "text": "¡Hola! 👋",
+                "blocks": create_help_blocks()
+            })
             return
         
         # Obtener respuesta del LLM
@@ -130,7 +284,7 @@ def handle_hello_command(ack, respond, command, logger):
 # MENSAJES DIRECTOS CON IA
 # ============================================================================
 @app.event("message")
-def handle_message_events(body, logger, say):
+def handle_message_events(body, logger, say, client):
     """Maneja mensajes directos con IA"""
     try:
         event = body.get("event", {})
@@ -157,16 +311,22 @@ def handle_message_events(body, logger, say):
                     f"🔧 **Modelo**: {llm_config.config['model']}")
                 return
             
-            # Comando para ver memoria
+            # Comando para ver memoria con mensaje efímero
             if text.lower() == "/memory":
                 stats = memory_manager.get_memory_stats()
                 history = memory_manager.get_conversation_history(user, limit=5)
-                say(f"🧠 **Estadísticas de Memoria**\n" +
-                    f"👥 Usuarios: {stats.get('total_users', 0)}\n" +
-                    f"💬 Conversaciones: {stats.get('total_conversations', 0)}\n" +
-                    f"🎯 Contextos activos: {stats.get('active_contexts', 0)}\n" +
-                    f"💾 DB: {stats.get('db_size_mb', 0)} MB\n" +
-                    f"📚 Últimas {len(history)} conversaciones registradas")
+                
+                # QUICK WIN: Mensaje efímero (solo visible para el usuario)
+                client.chat_postEphemeral(
+                    channel=event.get("channel"),
+                    user=user,
+                    text=f"🧠 **Estadísticas de Memoria**\n" +
+                         f"👥 Usuarios: {stats.get('total_users', 0)}\n" +
+                         f"💬 Conversaciones: {stats.get('total_conversations', 0)}\n" +
+                         f"🎯 Contextos activos: {stats.get('active_contexts', 0)}\n" +
+                         f"💾 DB: {stats.get('db_size_mb', 0)} MB\n" +
+                         f"📚 Últimas {len(history)} conversaciones registradas"
+                )
                 return
             
             # MEMORIA: Registrar mensaje

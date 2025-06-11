@@ -22,6 +22,7 @@ structlog>=23.1.0
 # Memory and Database Support
 # sqlite3 is built into Python, no need to install
 datetime
+redis>=4.5.0           # Para sesiones activas y cache temporal
 
 # Development dependencies (opcional)
 # pytest>=7.0.0

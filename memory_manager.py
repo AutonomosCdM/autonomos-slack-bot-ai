@@ -11,6 +11,12 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 import os
 
+# Importar Redis memory para FASE 2
+from redis_memory import redis_memory
+
+# Importar memoria inteligente para FASE 3
+from intelligent_memory import intelligent_memory
+
 logger = logging.getLogger(__name__)
 
 class MemoryManager:
@@ -113,6 +119,17 @@ class MemoryManager:
                         thread_ts: str = None, message_ts: str = None, metadata: Dict = None):
         """Guardar mensaje en historial de conversaciones"""
         try:
+            # FASE 2: Actualizar sesión activa en Redis
+            if redis_memory.is_available():
+                if role == "user":
+                    # Iniciar/actualizar sesión para mensajes de usuario
+                    redis_memory.start_active_session(user_id, channel_id, metadata)
+                    redis_memory.increment_message_counter("user")
+                else:
+                    redis_memory.update_session_activity(user_id, channel_id)
+                    redis_memory.increment_message_counter("bot")
+            
+            # Guardar en SQLite (persistente)
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
@@ -185,8 +202,16 @@ class MemoryManager:
             return []
 
     def get_context_for_llm(self, user_id: str, channel_id: str, max_messages: int = 10) -> List[Dict]:
-        """Obtener contexto formateado para el LLM"""
+        """Obtener contexto formateado para el LLM con cache Redis"""
         try:
+            # FASE 2: Intentar obtener de cache Redis primero
+            if redis_memory.is_available():
+                cached_context = redis_memory.get_cached_context(user_id, channel_id)
+                if cached_context and len(cached_context) >= 3:
+                    logger.debug(f"🚀 Contexto desde Redis cache: {len(cached_context)} mensajes")
+                    return cached_context
+            
+            # Fallback a SQLite
             history = self.get_conversation_history(user_id, channel_id, limit=max_messages, hours_back=2)
             
             # Formatear para el LLM (formato OpenAI/Anthropic)
@@ -197,12 +222,82 @@ class MemoryManager:
                     "content": msg["content"]
                 })
             
+            # FASE 2: Cachear en Redis para próxima vez
+            if redis_memory.is_available() and llm_context:
+                redis_memory.cache_recent_context(user_id, channel_id, llm_context)
+            
             logger.debug(f"🧠 Contexto para LLM: {len(llm_context)} mensajes")
             return llm_context
             
         except Exception as e:
             logger.error(f"❌ Error obteniendo contexto para LLM: {e}")
             return []
+    
+    def get_intelligent_context(self, user_id: str, channel_id: str, current_message: str, max_messages: int = 10) -> Dict:
+        """FASE 3: Obtener contexto inteligente con análisis semántico"""
+        try:
+            # Obtener historial completo
+            history = self.get_conversation_history(user_id, channel_id, limit=max_messages, hours_back=4)
+            
+            # Obtener preferencias del usuario
+            user_preferences = self.get_user_preferences(user_id)
+            
+            # Generar contexto inteligente
+            smart_context = intelligent_memory.generate_smart_context(
+                current_message, 
+                history, 
+                user_preferences
+            )
+            
+            # Formatear contexto optimizado para LLM
+            optimized_context = self._format_intelligent_context_for_llm(smart_context)
+            
+            logger.info(f"🤖 Contexto inteligente generado para {user_id}")
+            return {
+                "context": optimized_context,
+                "analysis": smart_context.get("message_analysis", {}),
+                "hints": smart_context.get("response_hints", []),
+                "tone": smart_context.get("recommended_tone", "casual")
+            }
+            
+        except Exception as e:
+            logger.error(f"❌ Error generando contexto inteligente: {e}")
+            # Fallback al contexto básico
+            basic_context = self.get_context_for_llm(user_id, channel_id, max_messages)
+            return {
+                "context": basic_context,
+                "analysis": {},
+                "hints": ["Responder de manera natural y útil"],
+                "tone": "casual"
+            }
+    
+    def _format_intelligent_context_for_llm(self, smart_context: Dict) -> List[Dict]:
+        """Formatea el contexto inteligente para el LLM"""
+        try:
+            # Mensajes relevantes
+            relevant_history = smart_context.get("relevant_history", [])
+            
+            # Convertir a formato LLM
+            llm_context = []
+            for msg in relevant_history:
+                llm_context.append({
+                    "role": msg.get("role", "user"),
+                    "content": msg.get("content", "")
+                })
+            
+            # Agregar resumen de contexto como mensaje del sistema si es relevante
+            context_summary = smart_context.get("context_summary", "")
+            if context_summary and len(llm_context) > 2:
+                llm_context.insert(0, {
+                    "role": "system",
+                    "content": f"Contexto de la conversación: {context_summary}"
+                })
+            
+            return llm_context
+            
+        except Exception as e:
+            logger.error(f"❌ Error formateando contexto inteligente: {e}")
+            return smart_context.get("relevant_history", [])
 
     def update_active_context(self, user_id: str, channel_id: str, 
                             context_summary: str = None, topics: List[str] = None):
@@ -295,8 +390,9 @@ class MemoryManager:
             logger.error(f"❌ Error en limpieza de datos: {e}")
 
     def get_memory_stats(self) -> Dict:
-        """Obtener estadísticas de memoria para debugging"""
+        """Obtener estadísticas de memoria para debugging (SQLite + Redis)"""
         try:
+            # Stats de SQLite
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
@@ -315,12 +411,26 @@ class MemoryManager:
                 # Tamaño de DB
                 db_size = os.path.getsize(self.db_path) if os.path.exists(self.db_path) else 0
                 
-                return {
+                stats = {
                     "total_users": total_users,
                     "total_conversations": total_conversations,
                     "active_contexts": active_contexts,
                     "db_size_mb": round(db_size / (1024 * 1024), 2)
                 }
+                
+                # FASE 2: Agregar stats de Redis
+                if redis_memory.is_available():
+                    redis_stats = redis_memory.get_realtime_stats()
+                    stats.update({
+                        "redis_available": True,
+                        "active_sessions": redis_stats.get("active_sessions", 0),
+                        "messages_today": redis_stats.get("messages_today", 0),
+                        "active_users_redis": redis_stats.get("active_users", 0)
+                    })
+                else:
+                    stats["redis_available"] = False
+                
+                return stats
                 
         except Exception as e:
             logger.error(f"❌ Error obteniendo estadísticas: {e}")
