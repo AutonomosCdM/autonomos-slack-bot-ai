@@ -19,8 +19,13 @@ class MemoryManager:
     Maneja conversaciones, contexto y preferencias de usuario
     """
     
-    def __init__(self, db_path: str = "dona_memory.db"):
+    def __init__(self, db_path: str = None):
         """Inicializar el memory manager"""
+        if db_path is None:
+            # En producción, usar directorio temporal
+            import tempfile
+            temp_dir = tempfile.gettempdir()
+            db_path = os.path.join(temp_dir, "dona_memory.db")
         self.db_path = db_path
         self.init_database()
         logger.info(f"💾 Memory Manager inicializado con DB: {db_path}")
@@ -119,10 +124,11 @@ class MemoryManager:
                 """, (user_id, channel_id, thread_ts, message_ts, role, content, metadata_json))
                 
                 conn.commit()
-                logger.debug(f"💬 Conversación guardada: {user_id} en {channel_id}")
+                logger.info(f"💬 Conversación guardada: {user_id} en {channel_id} - {role}: {content[:50]}...")
                 
         except Exception as e:
             logger.error(f"❌ Error guardando conversación: {e}")
+            logger.exception("Stack trace:")
 
     def get_conversation_history(self, user_id: str, channel_id: str = None, 
                                limit: int = 20, hours_back: int = 24) -> List[Dict]:
@@ -168,7 +174,10 @@ class MemoryManager:
                         "channel_id": row[4] if len(row) > 4 else channel_id
                     })
                 
-                logger.debug(f"📚 Obtenido historial: {len(history)} mensajes para {user_id}")
+                logger.info(f"📚 Obtenido historial: {len(history)} mensajes para {user_id}")
+                # Log primeros mensajes para debug
+                if history:
+                    logger.info(f"🔍 Primer mensaje: {history[0]['content'][:50]}...")
                 return history
                 
         except Exception as e:
