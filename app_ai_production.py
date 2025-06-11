@@ -13,8 +13,9 @@ from dotenv import load_dotenv
 from llm_handler_production import get_llm_response_sync
 from llm_config_production import llm_config
 
-# Importar memory manager
+# Importar memory manager y canvas
 from memory_manager import memory_manager
+from canvas_manager import canvas_manager
 
 # Cargar variables de entorno
 load_dotenv()
@@ -169,6 +170,15 @@ def create_help_blocks():
                     },
                     "value": "usage_tips",
                     "action_id": "button_usage_tips"
+                },
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "text": "📊 Crear Resumen"
+                    },
+                    "value": "create_summary",
+                    "action_id": "button_create_summary"
                 }
             ]
         }
@@ -245,6 +255,80 @@ def handle_usage_tips_button(ack, body, client, logger):
     except Exception as e:
         logger.error(f"❌ Error en botón tips: {e}")
 
+@app.action("button_create_summary")
+def handle_create_summary_button(ack, body, client, logger):
+    """Maneja click del botón de crear resumen"""
+    try:
+        ack()
+        user_id = body["user"]["id"]
+        channel_id = body["channel"]["id"]
+        
+        # Obtener historial de conversación
+        history = memory_manager.get_conversation_history(user_id, channel_id, limit=20)
+        
+        if len(history) < 3:
+            client.chat_postEphemeral(
+                channel=channel_id,
+                user=user_id,
+                text="📊 *Necesito más conversación*\n" +
+                     "No hay suficiente historial para crear un resumen. " +
+                     "Conversa un poco más y luego intenta de nuevo."
+            )
+            return
+        
+        # Obtener análisis inteligente
+        analysis = memory_manager.get_intelligent_context(
+            user_id, channel_id, "crear resumen"
+        ).get("analysis", {})
+        
+        # Crear Canvas de resumen
+        canvas_result = canvas_manager.create_conversation_summary(
+            client=client,
+            channel_id=channel_id,
+            conversation_history=history,
+            analysis=analysis,
+            channel_name=f"Conversación con {user_id}"
+        )
+        
+        if canvas_result.get("success"):
+            # Compartir Canvas
+            canvas_manager.share_canvas_in_channel(
+                client=client,
+                canvas_url=canvas_result["canvas_url"],
+                channel_id=channel_id,
+                title=canvas_result["title"],
+                canvas_type="summary"
+            )
+            
+            # Mensaje efímero de confirmación
+            client.chat_postEphemeral(
+                channel=channel_id,
+                user=user_id,
+                text=f"✅ *Canvas creado exitosamente*\n" +
+                     f"📊 {canvas_result['title']}\n" +
+                     f"🔗 Revisa el Canvas compartido arriba para ver el resumen detallado."
+            )
+        else:
+            client.chat_postEphemeral(
+                channel=channel_id,
+                user=user_id,
+                text=f"❌ *Error creando Canvas*\n" +
+                     f"No pude crear el resumen. Error: {canvas_result.get('error', 'Desconocido')}"
+            )
+        
+        logger.info(f"✅ Canvas de resumen procesado para {user_id}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error en botón resumen: {e}")
+        try:
+            client.chat_postEphemeral(
+                channel=body["channel"]["id"],
+                user=body["user"]["id"],
+                text="❌ Error interno creando resumen. Intenta más tarde."
+            )
+        except:
+            pass
+
 # ============================================================================
 # COMANDO SLASH CON IA
 # ============================================================================
@@ -277,6 +361,130 @@ def handle_hello_command(ack, respond, command, logger):
         logger.error(f"❌ Error en comando: {e}")
         try:
             respond("😅 Error procesando comando. Intenta de nuevo.")
+        except:
+            pass
+
+# ============================================================================
+# COMANDO SLASH CANVAS
+# ============================================================================
+@app.command("/canvas")
+def handle_canvas_command(ack, body, client, logger, respond):
+    """Comando para crear diferentes tipos de Canvas"""
+    try:
+        ack()
+        
+        user_id = body["user_id"]
+        channel_id = body["channel_id"]
+        text = body.get("text", "").strip()
+        
+        logger.info(f"📄 Comando /canvas de {user_id}: '{text}'")
+        
+        # Parse comando
+        if not text:
+            # Mostrar ayuda
+            respond({
+                "response_type": "ephemeral",
+                "text": "📄 *Comando Canvas*\n\n" +
+                       "*Uso:*\n" +
+                       "• `/canvas resumen` - Crear resumen de conversación\n" +
+                       "• `/canvas knowledge [tema]` - Crear base de conocimiento\n" +
+                       "• `/canvas proyecto [nombre]` - Documentar proyecto\n\n" +
+                       "*Ejemplos:*\n" +
+                       "• `/canvas resumen`\n" +
+                       "• `/canvas knowledge Python`\n" +
+                       "• `/canvas proyecto Nueva Feature`"
+            })
+            return
+        
+        parts = text.split(maxsplit=1)
+        canvas_type = parts[0].lower()
+        
+        if canvas_type == "resumen":
+            # Crear resumen de conversación
+            history = memory_manager.get_conversation_history(user_id, channel_id, limit=25)
+            
+            if len(history) < 3:
+                respond({
+                    "response_type": "ephemeral", 
+                    "text": "📊 *Necesito más conversación*\n" +
+                           "No hay suficiente historial para crear un resumen. " +
+                           "Conversa un poco más y luego intenta de nuevo."
+                })
+                return
+            
+            analysis = memory_manager.get_intelligent_context(
+                user_id, channel_id, "crear resumen canvas"
+            ).get("analysis", {})
+            
+            canvas_result = canvas_manager.create_conversation_summary(
+                client=client,
+                channel_id=channel_id,
+                conversation_history=history,
+                analysis=analysis,
+                channel_name=f"Canal {channel_id[-4:]}"
+            )
+            
+        elif canvas_type == "knowledge":
+            # Crear knowledge base
+            topic = parts[1] if len(parts) > 1 else "Nuevo Tema"
+            
+            canvas_result = canvas_manager.create_knowledge_base(
+                client=client,
+                topic=topic,
+                description=f"Base de conocimiento colaborativa sobre {topic}",
+                resources=[],
+                tags=[topic.lower()]
+            )
+            
+        elif canvas_type == "proyecto":
+            # Crear documentación de proyecto
+            project_name = parts[1] if len(parts) > 1 else "Nuevo Proyecto"
+            
+            canvas_result = canvas_manager.create_project_documentation(
+                client=client,
+                project_name=project_name,
+                objective=f"Documentar y gestionar el proyecto {project_name}",
+                requirements=[]
+            )
+            
+        else:
+            respond({
+                "response_type": "ephemeral",
+                "text": f"❌ *Tipo desconocido: '{canvas_type}'*\n\n" +
+                       "Tipos válidos: `resumen`, `knowledge`, `proyecto`"
+            })
+            return
+        
+        # Procesar resultado
+        if canvas_result.get("success"):
+            # Compartir Canvas en canal
+            canvas_manager.share_canvas_in_channel(
+                client=client,
+                canvas_url=canvas_result["canvas_url"],
+                channel_id=channel_id,
+                title=canvas_result["title"],
+                canvas_type=canvas_result["type"]
+            )
+            
+            respond({
+                "response_type": "ephemeral",
+                "text": f"✅ *Canvas creado exitosamente*\n" +
+                       f"📄 {canvas_result['title']}\n" +
+                       f"🔗 Canvas compartido en el canal para colaboración."
+            })
+        else:
+            respond({
+                "response_type": "ephemeral",
+                "text": f"❌ *Error creando Canvas*\n" +
+                       f"No pude crear el Canvas. Error: {canvas_result.get('error', 'Desconocido')}"
+            })
+        
+        logger.info(f"✅ Comando /canvas procesado: {canvas_type}")
+        
+    except Exception as e:
+        logger.error(f"❌ Error en comando /canvas: {e}")
+        try:
+            respond("😅 Error procesando comando Canvas. Intenta de nuevo.")
         except:
             pass
 

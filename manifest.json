@@ -1,1 +1,76 @@
-{\n  \"display_information\": {\n    \"name\": \"Dona - Asistente AI\",\n    \"description\": \"Bot inteligente con memoria y capacidades avanzadas\",\n    \"background_color\": \"#2c3e50\"\n  },\n  \"features\": {\n    \"app_home\": {\n      \"home_tab_enabled\": false,\n      \"messages_tab_enabled\": true,\n      \"messages_tab_read_only_enabled\": false\n    },\n    \"bot_user\": {\n      \"display_name\": \"Dona\",\n      \"always_online\": true\n    },\n    \"slash_commands\": [\n      {\n        \"command\": \"/hello\",\n        \"url\": \"https://dummy-url.com/slack/commands\",\n        \"description\": \"Saluda y obtén ayuda del bot\",\n        \"usage_hint\": \"[mensaje opcional]\"\n      },\n      {\n        \"command\": \"/memory\",\n        \"url\": \"https://dummy-url.com/slack/commands\", \n        \"description\": \"Ver estadísticas de memoria del bot\",\n        \"usage_hint\": \"\"\n      },\n      {\n        \"command\": \"/provider\",\n        \"url\": \"https://dummy-url.com/slack/commands\",\n        \"description\": \"Ver proveedor de IA activo\",\n        \"usage_hint\": \"\"\n      }\n    ]\n  },\n  \"oauth_config\": {\n    \"scopes\": {\n      \"bot\": [\n        \"app_mentions:read\",\n        \"channels:history\",\n        \"chat:write\",\n        \"im:history\",\n        \"im:read\",\n        \"im:write\",\n        \"commands\",\n        \"reactions:read\",\n        \"reactions:write\"\n      ]\n    }\n  },\n  \"settings\": {\n    \"event_subscriptions\": {\n      \"bot_events\": [\n        \"app_mention\",\n        \"message.im\",\n        \"message.channels\",\n        \"reaction_added\"\n      ]\n    },\n    \"interactivity\": {\n      \"is_enabled\": true\n    },\n    \"org_deploy_enabled\": false,\n    \"socket_mode_enabled\": true,\n    \"token_rotation_enabled\": false\n  }\n}"
+{
+  "display_information": {
+    "name": "Dona - Asistente AI",
+    "description": "Bot inteligente con memoria y capacidades avanzadas",
+    "background_color": "#2c3e50"
+  },
+  "features": {
+    "app_home": {
+      "home_tab_enabled": false,
+      "messages_tab_enabled": true,
+      "messages_tab_read_only_enabled": false
+    },
+    "bot_user": {
+      "display_name": "Dona",
+      "always_online": true
+    },
+    "slash_commands": [
+      {
+        "command": "/hello",
+        "url": "https://dummy-url.com/slack/commands",
+        "description": "Saluda y obtén ayuda del bot",
+        "usage_hint": "[mensaje opcional]"
+      },
+      {
+        "command": "/memory",
+        "url": "https://dummy-url.com/slack/commands", 
+        "description": "Ver estadísticas de memoria del bot",
+        "usage_hint": ""
+      },
+      {
+        "command": "/provider",
+        "url": "https://dummy-url.com/slack/commands",
+        "description": "Ver proveedor de IA activo",
+        "usage_hint": ""
+      },
+      {
+        "command": "/canvas",
+        "url": "https://dummy-url.com/slack/commands",
+        "description": "Crear resumen inteligente en Canvas",
+        "usage_hint": "[tema]"
+      }
+    ]
+  ],
+  "oauth_config": {
+    "scopes": {
+      "bot": [
+        "app_mentions:read",
+        "channels:history",
+        "chat:write",
+        "im:history",
+        "im:read",
+        "im:write",
+        "commands",
+        "reactions:read",
+        "reactions:write",
+        "canvases:write"
+      ]
+    }
+  },
+  "settings": {
+    "event_subscriptions": {
+      "bot_events": [
+        "app_mention",
+        "message.im",
+        "message.channels",
+        "reaction_added"
+      ]
+    },
+    "interactivity": {
+      "is_enabled": true
+    },
+    "org_deploy_enabled": false,
+    "socket_mode_enabled": true,
+    "token_rotation_enabled": false
+  }
+}
