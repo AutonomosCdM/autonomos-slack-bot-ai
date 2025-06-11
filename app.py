@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Slack Bot usando Bolt para Python con Socket Mode
-Bot funcional con capacidades básicas de respuesta a menciones, comandos slash y mensajes directos.
+Slack Bot con IA usando Bolt para Python con Socket Mode
+Soporta múltiples LLMs: Anthropic, OpenRouter, OpenAI
 """
 
 import os
@@ -10,6 +10,10 @@ from slack_bolt import App
 from slack_bolt.adapter.socket_mode import SocketModeHandler
 from dotenv import load_dotenv
 
+# Importar el manejador de LLM
+from llm_handler import get_llm_response_sync
+from llm_config import llm_config
+
 # Cargar variables de entorno desde .env
 load_dotenv()
 
@@ -17,143 +21,139 @@ load_dotenv()
 logging.basicConfig(level=logging.DEBUG)
 
 # Inicializar la app con el token del bot
-# CRITICAL: Asegúrate de que SLACK_BOT_TOKEN esté configurado correctamente
 app = App(token=os.environ.get("SLACK_BOT_TOKEN"))
 
 # ============================================================================
-# MANEJO DE MENCIONES (@bot)
+# MANEJO DE MENCIONES (@bot) CON IA
 # ============================================================================
 @app.event("app_mention")
 def handle_mention(body, say, logger):
     """
-    Responde cuando el bot es mencionado en cualquier canal.
-    Ejemplo: @dona hola
+    Responde cuando el bot es mencionado usando IA
     """
     try:
-        # Logging extenso para debugging
         logger.info("===============================")
         logger.info("🔍 MENCIÓN RECIBIDA")
-        logger.info(f"Evento completo: {body}")
-        logger.info(f"Tipo de evento: {body.get('event', {}).get('type')}")
-        logger.info(f"Usuario: {body.get('event', {}).get('user')}")
-        logger.info(f"Texto: {body.get('event', {}).get('text')}")
-        logger.info(f"Canal: {body.get('event', {}).get('channel')}")
-        logger.info("===============================")
         
         user = body["event"]["user"]
         text = body["event"]["text"]
         channel = body["event"]["channel"]
         
-        logger.info(f"Mención recibida de {user} en {channel}: {text}")
+        logger.info(f"Usuario: {user}, Canal: {channel}")
+        logger.info(f"Texto: {text}")
         
-        # Respuesta simple a menciones
-        say(f"¡Hola <@{user}>! 👋 Escuché que me mencionaste. ¿En qué puedo ayudarte?")
-        logger.info("✅ Respuesta enviada exitosamente")
+        # Limpiar el mensaje (quitar la mención del bot)
+        # El texto incluye <@BOTID> al inicio, lo removemos
+        bot_id = body["event"].get("bot_id") or body["authorizations"][0]["user_id"]
+        clean_text = text.replace(f"<@{bot_id}>", "").strip()
+        
+        if not clean_text:
+            say("¡Hola! 👋 ¿En qué puedo ayudarte? Puedes preguntarme cualquier cosa.")
+            return
+        
+        # Obtener respuesta del LLM
+        logger.info(f"🤖 Enviando a LLM: {clean_text}")
+        logger.info(f"📡 Proveedor activo: {llm_config.active_provider}")
+        
+        response = get_llm_response_sync(clean_text)
+        
+        # Responder en el canal
+        say(response)
+        logger.info("✅ Respuesta enviada")
         
     except Exception as e:
-        logger.error(f"❌ Error manejando mención: {e}")
-        logger.exception("Stack trace completo:")
-        try:
-            say("¡Hola! Hubo un pequeño error, pero estoy aquí 🤖")
-        except Exception as say_error:
-            logger.error(f"❌ Error enviando respuesta de error: {say_error}")
+        logger.error(f"❌ Error: {e}")
+        logger.exception("Stack trace:")
+        say("😅 Disculpa, tuve un problema procesando tu mensaje. ¿Podrías intentarlo de nuevo?")
 
 # ============================================================================
-# COMANDO SLASH BÁSICO
+# COMANDO SLASH CON IA
 # ============================================================================
 @app.command("/hello")
 def handle_hello_command(ack, respond, command, logger):
     """
-    Maneja el comando slash /hello
-    IMPORTANTE: Debes registrar este comando en tu app de Slack en api.slack.com
+    Maneja el comando slash /hello con respuestas inteligentes
     """
     try:
-        # Acknowledgment DEBE ser lo primero (menos de 3 segundos)
         ack()
         
-        # Logging completo
         logger.info("===============================")
         logger.info("🔍 COMANDO /hello RECIBIDO")
-        logger.info(f"Comando completo: {command}")
-        logger.info(f"Usuario ID: {command.get('user_id')}")
-        logger.info(f"Texto: {command.get('text', '')}")
-        logger.info(f"Canal ID: {command.get('channel_id')}")
-        logger.info("===============================")
         
         user_id = command["user_id"]
         text = command.get("text", "")
         
-        # Respuesta al comando
-        if text:
-            respond(f"¡Hola <@{user_id}>! Dijiste: *{text}* 🎉")
-        else:
-            respond(f"¡Hola <@{user_id}>! Usa `/hello [mensaje]` para que pueda responder algo específico 😊")
-            
-        logger.info("✅ Comando procesado exitosamente")
-            
+        if not text:
+            respond("¡Hola! 👋 Usa `/hello [tu mensaje]` y te responderé con IA.")
+            return
+        
+        # Obtener respuesta del LLM
+        logger.info(f"🤖 Procesando con IA: {text}")
+        response = get_llm_response_sync(text)
+        
+        respond(response)
+        logger.info("✅ Comando procesado")
+        
     except Exception as e:
-        logger.error(f"❌ Error manejando comando /hello: {e}")
-        logger.exception("Stack trace completo:")
-        # Intenta responder aunque haya un error
-        try:
-            respond("¡Ups! Ocurrió un error procesando el comando.")
-        except:
-            pass
+        logger.error(f"❌ Error: {e}")
+        respond("😅 Hubo un error procesando tu comando. Intenta de nuevo.")
 
 # ============================================================================
-# MANEJO DE MENSAJES DIRECTOS
+# MENSAJES DIRECTOS CON IA
 # ============================================================================
 @app.event("message")
 def handle_message_events(body, logger, say):
     """
-    Maneja todos los eventos de tipo mensaje.
+    Maneja mensajes directos con respuestas de IA
     """
     try:
-        logger.info("===============================")
-        logger.info("🔍 MENSAJE RECIBIDO")
-        logger.info(f"Evento completo: {body}")
-        
         event = body.get("event", {})
-        channel_type = event.get("channel_type")
-        user = event.get("user")
-        text = event.get("text", "")
-        
-        logger.info(f"Canal tipo: {channel_type}")
-        logger.info(f"Usuario: {user}")
-        logger.info(f"Texto: {text}")
-        logger.info("===============================")
         
         # Ignorar mensajes del propio bot
         if event.get("bot_id"):
-            logger.info("Ignorando mensaje de bot")
             return
-            
-        # Respuesta según tipo de canal
+        
+        channel_type = event.get("channel_type")
+        
+        # Solo procesar DMs
         if channel_type == "im":
-            logger.info("📨 Procesando mensaje directo")
+            logger.info("===============================")
+            logger.info("📨 MENSAJE DIRECTO RECIBIDO")
             
-            # Respuesta inteligente básica
-            if "hola" in text.lower():
-                say("¡Hola! ¿Cómo estás? 👋")
-            elif "ayuda" in text.lower():
-                say("""
-¡Puedo ayudarte! Aquí tienes algunas cosas que puedo hacer:
-
-• Mencióname en cualquier canal: `@dona mensaje`
-• Usa el comando slash: `/hello [mensaje]`
-• Envíame un mensaje directo como este
-• Pregúntame cualquier cosa 🤖
-                """)
-            elif "adiós" in text.lower() or "bye" in text.lower():
-                say("¡Hasta luego! Que tengas un buen día 👋")
-            else:
-                say(f"Recibí tu mensaje: *{text}*\n\nEscribe 'ayuda' para ver qué puedo hacer 🤖")
+            user = event.get("user")
+            text = event.get("text", "")
             
-            logger.info("✅ Respuesta a DM enviada")
+            logger.info(f"Usuario: {user}")
+            logger.info(f"Texto: {text}")
+            
+            if not text:
+                return
+            
+            # Comandos especiales
+            if text.lower() == "/provider":
+                say(f"🤖 Proveedor actual: **{llm_config.active_provider}**\n" +
+                    "Disponibles: anthropic, openrouter, openai\n" +
+                    "Usa `/switch [provider]` para cambiar.")
+                return
+            
+            if text.lower().startswith("/switch "):
+                provider = text[8:].strip()
+                if llm_config.switch_provider(provider):
+                    say(f"✅ Cambiado a: **{provider}**")
+                else:
+                    say(f"❌ Proveedor no válido. Usa: anthropic, openrouter, o openai")
+                return
+            
+            # Respuesta con IA
+            logger.info(f"🤖 Procesando con {llm_config.active_provider}")
+            response = get_llm_response_sync(text)
+            
+            say(response)
+            logger.info("✅ Respuesta enviada")
         
     except Exception as e:
-        logger.error(f"❌ Error manejando mensaje: {e}")
-        logger.exception("Stack trace completo:")
+        logger.error(f"❌ Error: {e}")
+        logger.exception("Stack trace:")
 
 # ============================================================================
 # MANEJO DE ERRORES GLOBALES
@@ -161,43 +161,58 @@ def handle_message_events(body, logger, say):
 @app.error
 def global_error_handler(error, body, logger):
     """
-    Maneja errores globales del bot para evitar crashes.
-    CRÍTICO: Esto evita que el bot se rompa por errores inesperados.
+    Maneja errores globales del bot
     """
-    logger.exception(f"Error: {error}")
-    logger.info(f"Request body: {body}")
+    logger.exception(f"Error global: {error}")
+    logger.info(f"Body: {body}")
 
 # ============================================================================
 # INICIALIZACIÓN Y EJECUCIÓN
 # ============================================================================
 if __name__ == "__main__":
-    # Verificar que las variables de entorno estén configuradas
+    # Verificar variables de entorno de Slack
     required_vars = ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"]
     missing_vars = [var for var in required_vars if not os.environ.get(var)]
     
     if missing_vars:
-        print("❌ ERROR: Las siguientes variables de entorno no están configuradas:")
+        print("❌ ERROR: Variables de Slack no configuradas:")
         for var in missing_vars:
             print(f"   - {var}")
-        print("\n📝 Revisa tu archivo .env y asegúrate de que esté cargado correctamente.")
         exit(1)
     
-    print("🚀 Iniciando Slack Bot...")
-    print("📡 Usando Socket Mode (no necesita URL pública)")
-    print("🔗 Conectando a Slack...")
+    # Verificar que al menos un LLM esté configurado
+    providers_status = {
+        "anthropic": llm_config.is_configured("anthropic"),
+        "openrouter": llm_config.is_configured("openrouter"),
+        "openai": llm_config.is_configured("openai")
+    }
+    
+    print("🤖 Estado de proveedores de IA:")
+    for provider, configured in providers_status.items():
+        status = "✅ Configurado" if configured else "❌ No configurado"
+        print(f"   {provider}: {status}")
+    
+    if not any(providers_status.values()):
+        print("\n❌ ERROR: Ningún proveedor de IA está configurado.")
+        print("Configura al menos uno en tu archivo .env")
+        exit(1)
+    
+    print(f"\n🚀 Iniciando Slack Bot con IA...")
+    print(f"🤖 Proveedor activo: {llm_config.active_provider}")
+    print(f"📡 Usando Socket Mode")
     
     try:
-        # Socket Mode Handler - NO necesita ngrok ni URL pública
         handler = SocketModeHandler(app, os.environ["SLACK_APP_TOKEN"])
         
         print("✅ Bot conectado exitosamente!")
-        print("💬 El bot está listo para recibir mensajes")
-        print("🛑 Presiona Ctrl+C para detener el bot")
+        print("💬 El bot está listo para conversaciones inteligentes")
+        print("\n💡 Comandos especiales en DM:")
+        print("   /provider - Ver proveedor actual")
+        print("   /switch [provider] - Cambiar proveedor")
+        print("\n🛑 Presiona Ctrl+C para detener")
         
-        # Iniciar el bot
         handler.start()
         
     except Exception as e:
-        print(f"❌ Error al iniciar el bot: {e}")
-        print("🔍 Revisa la sección de troubleshooting en el README")
+        print(f"❌ Error al iniciar: {e}")
         exit(1)
