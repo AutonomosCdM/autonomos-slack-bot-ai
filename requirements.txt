@@ -11,9 +11,8 @@ aiohttp>=3.8.0
 # Environment variable management
 python-dotenv>=1.0.0
 
-# AI/LLM Support
-anthropic>=0.18.0      # Para Claude de Anthropic
-openai>=1.12.0         # Para OpenAI (también funciona con OpenRouter)
+# AI/LLM Support - OpenRouter only
+openai>=1.12.0         # Para OpenRouter (usa la misma interfaz que OpenAI)
 httpx>=0.24.0          # Cliente HTTP moderno para APIs
 
 # Optional but recommended for production
