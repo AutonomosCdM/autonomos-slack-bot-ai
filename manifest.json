@@ -38,6 +38,18 @@
                 "url": "https://dummy-url.com/slack/commands",
                 "description": "Crear resumen inteligente en Canvas",
                 "usage_hint": "[tema]"
+            },
+            {
+                "command": "/papers",
+                "url": "https://dummy-url.com/slack/commands",
+                "description": "Buscar papers científicos en ArXiv",
+                "usage_hint": "[consulta de búsqueda]"
+            },
+            {
+                "command": "/mcp",
+                "url": "https://dummy-url.com/slack/commands",
+                "description": "Ver estado del sistema MCP",
+                "usage_hint": ""
             }
         ]
     },

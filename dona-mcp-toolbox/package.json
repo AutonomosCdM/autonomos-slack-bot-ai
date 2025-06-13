@@ -1,0 +1,47 @@
+{
+  "name": "dona-mcp-toolbox",
+  "version": "1.0.0",
+  "description": "Comprehensive MCP (Model Context Protocol) toolbox for Dona AI Assistant",
+  "main": "src/DonaMCP.js",
+  "scripts": {
+    "start": "node src/DonaMCP.js",
+    "test": "jest",
+    "dev": "nodemon src/DonaMCP.js",
+    "lint": "eslint src/",
+    "example": "node examples/usage-examples.js"
+  },
+  "keywords": [
+    "mcp",
+    "ai",
+    "assistant",
+    "toolbox",
+    "dona",
+    "arxiv",
+    "github",
+    "puppeteer",
+    "weather"
+  ],
+  "author": "Dona AI Team",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "puppeteer": "^21.0.0",
+    "@octokit/rest": "^20.0.0",
+    "xml2js": "^0.6.0",
+    "cheerio": "^1.0.0-rc.12",
+    "dotenv": "^16.3.0",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nodemon": "^3.0.0",
+    "eslint": "^8.50.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dona-ai/dona-mcp-toolbox"
+  }
+}

@@ -17,6 +17,9 @@ from llm_config_production import llm_config
 from memory_manager import memory_manager
 from canvas_manager import canvas_manager
 
+# Importar integración MCP
+from mcp_integration import mcp_integration
+
 # Cargar variables de entorno
 load_dotenv()
 
@@ -519,6 +522,16 @@ def handle_message_events(body, logger, say, client):
                     f"🔧 **Modelo**: {llm_config.config['model']}")
                 return
             
+            # Comando para buscar papers con MCP
+            if text.lower().startswith("/papers"):
+                handle_papers_command(text, user, say)
+                return
+            
+            # Comando para categorías de ArXiv
+            if text.lower() == "/categories":
+                handle_categories_command(user, say)
+                return
+            
             # Comando para ver memoria con mensaje efímero
             if text.lower() == "/memory":
                 stats = memory_manager.get_memory_stats()
@@ -579,6 +592,237 @@ def global_error_handler(error, body, logger):
     logger.error(f"💥 Error global: {error}")
 
 # ============================================================================
+# COMANDOS MCP
+# ============================================================================
+def handle_papers_command(text: str, user_id: str, say):
+    """Maneja comando /papers para buscar papers científicos"""
+    try:
+        # Extraer query del comando
+        parts = text.split(" ", 1)
+        if len(parts) < 2:
+            say("📚 **Uso**: `/papers [consulta]`\n" +
+                "Ejemplo: `/papers machine learning transformers`")
+            return
+        
+        query = parts[1].strip()
+        logger.info(f"🔍 Búsqueda de papers: {query} por {user_id}")
+        
+        # Buscar papers usando MCP
+        if not mcp_integration.initialized:
+            if not mcp_integration.initialize():
+                say("❌ Error: Sistema MCP no disponible")
+                return
+        
+        result = mcp_integration.search_papers(query, max_results=5)
+        
+        if result.get("success"):
+            papers = result.get("papers", [])
+            if papers:
+                formatted = mcp_integration.format_papers_for_slack(papers)
+                say(formatted)
+                
+                # Guardar en memoria
+                memory_manager.add_message(
+                    user_id, user_id, f"Búsqueda de papers: {query}", "user"
+                )
+                memory_manager.add_message(
+                    user_id, user_id, f"Encontré {len(papers)} papers sobre {query}", "assistant"
+                )
+            else:
+                say(f"📚 No encontré papers sobre '{query}'. Intenta con términos más generales.")
+        else:
+            error_msg = result.get("error", "Error desconocido")
+            say(f"❌ Error buscando papers: {error_msg}")
+            logger.error(f"Error MCP papers: {error_msg}")
+        
+    except Exception as e:
+        logger.error(f"Error en comando papers: {e}")
+        say("❌ Error procesando búsqueda de papers")
+
+def handle_categories_command(user_id: str, say):
+    """Maneja comando /categories para ver categorías de ArXiv"""
+    try:
+        logger.info(f"📂 Solicitud de categorías por {user_id}")
+        
+        # Obtener categorías usando MCP
+        if not mcp_integration.initialized:
+            if not mcp_integration.initialize():
+                say("❌ Error: Sistema MCP no disponible")
+                return
+        
+        result = mcp_integration.get_arxiv_categories()
+        
+        if result.get("success"):
+            categories = result.get("categories", {})
+            
+            formatted = "📂 **Categorías de ArXiv disponibles:**\n\n"
+            
+            # Mostrar las categorías más comunes
+            popular_cats = {
+                'cs.AI': 'Inteligencia Artificial',
+                'cs.LG': 'Machine Learning', 
+                'cs.CL': 'Procesamiento de Lenguaje',
+                'cs.CV': 'Visión por Computadora',
+                'cs.RO': 'Robótica',
+                'stat.ML': 'Machine Learning (Estadística)'
+            }
+            
+            for code, desc in popular_cats.items():
+                if code in categories:
+                    formatted += f"• `{code}`: {desc}\n"
+            
+            formatted += f"\n📊 Total de categorías: {len(categories)}\n"
+            formatted += "💡 Usa `/papers [query] en [categoría]` para buscar en categoría específica"
+            
+            say(formatted)
+        else:
+            error_msg = result.get("error", "Error desconocido")
+            say(f"❌ Error obteniendo categorías: {error_msg}")
+            logger.error(f"Error MCP categories: {error_msg}")
+        
+    except Exception as e:
+        logger.error(f"Error en comando categories: {e}")
+        say("❌ Error obteniendo categorías")
+
+@app.command("/papers")
+def handle_papers_slash_command(ack, body, client, respond):
+    """Comando slash para buscar papers"""
+    try:
+        ack()
+        
+        user_id = body["user_id"]
+        channel_id = body["channel_id"]
+        text = body.get("text", "").strip()
+        
+        if not text:
+            respond({
+                "response_type": "ephemeral",
+                "text": "📚 **Búsqueda de Papers Científicos**\n\n" +
+                       "**Uso**: `/papers [consulta]`\n" +
+                       "**Ejemplo**: `/papers deep learning attention mechanisms`\n\n" +
+                       "También puedes usar:\n" +
+                       "• `/categories` - Ver categorías disponibles\n" +
+                       "• En DM: `/papers [consulta]` funciona igual"
+            })
+            return
+        
+        logger.info(f"🔍 Slash command papers: {text} por {user_id}")
+        
+        # Buscar papers usando MCP
+        if not mcp_integration.initialized:
+            if not mcp_integration.initialize():
+                respond({
+                    "response_type": "ephemeral",
+                    "text": "❌ Error: Sistema MCP no disponible temporalmente"
+                })
+                return
+        
+        result = mcp_integration.search_papers(text, max_results=5)
+        
+        if result.get("success"):
+            papers = result.get("papers", [])
+            if papers:
+                formatted = mcp_integration.format_papers_for_slack(papers)
+                
+                # Respuesta pública en el canal
+                client.chat_postMessage(
+                    channel=channel_id,
+                    text=f"🔍 Búsqueda: *{text}*\n\n{formatted}",
+                    unfurl_links=False
+                )
+                
+                # Confirmación efímera
+                respond({
+                    "response_type": "ephemeral", 
+                    "text": f"✅ Encontré {len(papers)} papers sobre '{text}'"
+                })
+                
+                # Guardar en memoria
+                memory_manager.add_message(
+                    user_id, channel_id, f"Búsqueda de papers: {text}", "user"
+                )
+                memory_manager.add_message(
+                    user_id, channel_id, f"Encontré {len(papers)} papers sobre {text}", "assistant"
+                )
+            else:
+                respond({
+                    "response_type": "ephemeral",
+                    "text": f"📚 No encontré papers sobre '{text}'. Intenta con términos más generales."
+                })
+        else:
+            error_msg = result.get("error", "Error desconocido")
+            respond({
+                "response_type": "ephemeral",
+                "text": f"❌ Error buscando papers: {error_msg}"
+            })
+            logger.error(f"Error MCP papers slash: {error_msg}")
+        
+    except Exception as e:
+        logger.error(f"Error en comando slash papers: {e}")
+        respond({
+            "response_type": "ephemeral",
+            "text": "❌ Error procesando búsqueda de papers"
+        })
+
+@app.command("/mcp")
+def handle_mcp_status_command(ack, body, respond):
+    """Comando slash para estado del sistema MCP"""
+    try:
+        ack()
+        
+        logger.info(f"📊 MCP status solicitado por {body['user_id']}")
+        
+        # Inicializar MCP si es necesario
+        if not mcp_integration.initialized:
+            if not mcp_integration.initialize():
+                respond({
+                    "response_type": "ephemeral",
+                    "text": "❌ Sistema MCP no disponible"
+                })
+                return
+        
+        # Obtener estado del sistema
+        result = mcp_integration.get_system_status()
+        
+        if result.get("success"):
+            status = result.get("status", {})
+            health = result.get("health", {})
+            
+            formatted = "🔧 **Estado del Sistema MCP**\n\n"
+            formatted += f"✅ **Estado**: {'Saludable' if health.get('healthy') else 'Con problemas'}\n"
+            formatted += f"⏱️ **Uptime**: {status.get('uptime', 'N/A')}\n"
+            formatted += f"📦 **Módulos**: {status.get('mcpCount', 0)}\n"
+            formatted += f"🧠 **Cache**: {status.get('arxivCache', {}).get('size', 0)} elementos\n"
+            
+            if health.get('modules'):
+                modules = health['modules']
+                formatted += "\n📋 **Módulos disponibles**:\n"
+                for module, mod_health in modules.items():
+                    status_icon = "✅" if mod_health.get('healthy') else "❌"
+                    formatted += f"• {status_icon} {module.upper()}\n"
+            
+            formatted += "\n💡 **Comandos disponibles**:\n"
+            formatted += "• `/papers [query]` - Buscar papers científicos\n"
+            formatted += "• `/categories` - Ver categorías ArXiv\n"
+            
+            respond({
+                "response_type": "ephemeral",
+                "text": formatted
+            })
+        else:
+            respond({
+                "response_type": "ephemeral",
+                "text": f"❌ Error obteniendo estado MCP: {result.get('error')}"
+            })
+        
+    except Exception as e:
+        logger.error(f"Error en comando MCP status: {e}")
+        respond({
+            "response_type": "ephemeral",
+            "text": "❌ Error obteniendo estado del sistema"
+        })
+
+# ============================================================================
 # HEALTH CHECK ENDPOINT (para monitoreo)
 # ============================================================================
 def health_check():
@@ -592,6 +836,13 @@ def health_check():
         required_vars = ["SLACK_BOT_TOKEN", "SLACK_APP_TOKEN"]
         if not all(os.getenv(var) for var in required_vars):
             return False
+        
+        # Verificar MCP si está disponible
+        try:
+            if not mcp_integration.initialized:
+                mcp_integration.initialize()
+        except:
+            logger.warning("MCP integration not available during health check")
             
         return True
     except:
