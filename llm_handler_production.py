@@ -50,8 +50,20 @@ class ProductionLLMHandler:
             ]
             
             if self._detect_scientific_query(message, scientific_keywords):
-                logger.info("🔬 Búsqueda científica detectada - usando ArXiv MCP")
-                return await self._handle_scientific_query(message)
+                logger.info("🔬 Búsqueda científica detectada - intentando ArXiv MCP")
+                mcp_result = await self._handle_scientific_query(message)
+                # Si MCP falla, proporcionar respuesta útil
+                if "MCP no disponible" in mcp_result:
+                    search_terms = self._extract_search_terms(message)
+                    fallback_response = f"🔬 **Búsqueda científica: '{search_terms}'**\n\n"
+                    fallback_response += "📋 *Sistema de búsqueda académica temporalmente no disponible*\n\n"
+                    fallback_response += "**Alternativas recomendadas:**\n"
+                    fallback_response += f"• [ArXiv.org](https://arxiv.org/search/?query={search_terms.replace(' ', '+')}) - Búsqueda directa\n"
+                    fallback_response += f"• [Google Scholar](https://scholar.google.com/scholar?q={search_terms.replace(' ', '+')}) - Búsqueda académica\n"
+                    fallback_response += f"• [Semantic Scholar](https://www.semanticscholar.org/search?q={search_terms.replace(' ', '+')}) - Papers con análisis\n\n"
+                    fallback_response += "💡 *El sistema se restaurará automáticamente*"
+                    return fallback_response
+                return mcp_result
             
             # 2. Detectar consultas de clima (Weather)
             if self._detect_weather_query(message):
@@ -65,8 +77,25 @@ class ProductionLLMHandler:
             
             # 4. Detectar solicitudes de scraping/web content
             if self._detect_web_scraping_query(message):
-                logger.info("🕷️ Web scraping detectado - usando Puppeteer MCP")
-                return await self._handle_web_scraping_query(message)
+                logger.info("🕷️ Web scraping detectado - intentando Puppeteer MCP")
+                scraping_result = await self._handle_web_scraping_query(message)
+                # Si MCP falla, proporcionar respuesta útil
+                if "MCP no disponible" in scraping_result:
+                    # Extraer URL del mensaje
+                    import re
+                    url_match = re.search(r'https?://[^\s]+', message)
+                    url = url_match.group() if url_match else "la página web"
+                    
+                    fallback_response = f"🕷️ **Web Scraping: {url}**\n\n"
+                    fallback_response += "📋 *Sistema de extracción web temporalmente no disponible*\n\n"
+                    fallback_response += "**Alternativas recomendadas:**\n"
+                    fallback_response += "• **Visita manual**: Copia el contenido que necesites\n"
+                    fallback_response += "• **Reader Mode**: Usa el modo lectura de tu navegador\n"
+                    fallback_response += "• **Extensiones**: Utiliza Web Clipper, Pocket, etc.\n"
+                    fallback_response += "• **Dev Tools**: F12 → Console para extraer datos específicos\n\n"
+                    fallback_response += "💡 *El sistema se restaurará automáticamente*"
+                    return fallback_response
+                return scraping_result
             
             # Respuesta normal del LLM
             return await self._call_openrouter(message, context)
