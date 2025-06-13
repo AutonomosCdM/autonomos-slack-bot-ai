@@ -822,6 +822,31 @@ def handle_mcp_status_command(ack, body, respond):
             "text": "❌ Error obteniendo estado del sistema"
         })
 
+@app.command("/debug")
+def handle_debug_command(ack, body, respond):
+    """Comando slash para debug del entorno de producción"""
+    try:
+        ack()
+        
+        logger.info(f"🔍 Debug solicitado por {body['user_id']}")
+        
+        # Ejecutar diagnóstico
+        import debug_render_mcp
+        debug_info = debug_render_mcp.debug_environment()
+        formatted_output = debug_render_mcp.format_debug_output(debug_info)
+        
+        respond({
+            "response_type": "ephemeral",
+            "text": formatted_output
+        })
+        
+    except Exception as e:
+        logger.error(f"Error en comando debug: {e}")
+        respond({
+            "response_type": "ephemeral",
+            "text": f"❌ Error ejecutando debug: {str(e)}"
+        })
+
 # ============================================================================
 # HEALTH CHECK ENDPOINT (para monitoreo)
 # ============================================================================
