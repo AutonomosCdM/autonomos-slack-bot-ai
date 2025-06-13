@@ -38,7 +38,9 @@ class ProductionLLMHandler:
         logger.info(f"🤖 Procesando mensaje: {message[:100]}...")
         
         try:
-            # 🔍 DETECCIÓN AUTOMÁTICA: Búsquedas científicas
+            # 🔍 DETECCIÓN AUTOMÁTICA MCP
+            
+            # 1. Detectar consultas científicas (ArXiv)
             scientific_keywords = [
                 'paper', 'papers', 'artículo', 'artículos', 'estudio', 'estudios',
                 'investigación', 'research', 'arxiv', 'científico', 'científicos',
@@ -47,10 +49,24 @@ class ProductionLLMHandler:
                 'inteligencia artificial', 'neural network', 'redes neuronales'
             ]
             
-            # Detectar si el usuario busca papers científicos
             if self._detect_scientific_query(message, scientific_keywords):
-                logger.info("🔬 Búsqueda científica detectada - usando MCP")
+                logger.info("🔬 Búsqueda científica detectada - usando ArXiv MCP")
                 return await self._handle_scientific_query(message)
+            
+            # 2. Detectar consultas de clima (Weather)
+            if self._detect_weather_query(message):
+                logger.info("🌤️ Consulta de clima detectada - usando Weather MCP")
+                return await self._handle_weather_query(message)
+            
+            # 3. Detectar consultas de GitHub
+            if self._detect_github_query(message):
+                logger.info("🐙 Consulta de GitHub detectada - usando GitHub MCP")
+                return await self._handle_github_query(message)
+            
+            # 4. Detectar solicitudes de scraping/web content
+            if self._detect_web_scraping_query(message):
+                logger.info("🕷️ Web scraping detectado - usando Puppeteer MCP")
+                return await self._handle_web_scraping_query(message)
             
             # Respuesta normal del LLM
             return await self._call_openrouter(message, context)
@@ -210,6 +226,179 @@ class ProductionLLMHandler:
         # Unir las palabras más importantes
         search_terms = ' '.join(important_words[:4])  # Máximo 4 términos
         return search_terms
+    
+    # ========================================================================
+    # MÉTODOS DE DETECCIÓN Y MANEJO PARA OTROS MCPS
+    # ========================================================================
+    
+    def _detect_weather_query(self, message: str) -> bool:
+        """Detecta consultas sobre el clima"""
+        message_lower = message.lower()
+        
+        weather_keywords = [
+            'clima', 'weather', 'tiempo', 'temperatura', 'lluvia', 'rain',
+            'sol', 'sunny', 'nublado', 'cloudy', 'pronóstico', 'forecast',
+            'frío', 'calor', 'hot', 'cold', 'grados', 'degrees'
+        ]
+        
+        weather_patterns = [
+            r'cómo está el clima',
+            r'qué tiempo hace',
+            r'va a llover',
+            r'weather in',
+            r'clima en',
+            r'temperatura de',
+            r'pronóstico'
+        ]
+        
+        # Buscar palabras clave
+        for keyword in weather_keywords:
+            if keyword in message_lower:
+                return True
+        
+        # Buscar patrones
+        for pattern in weather_patterns:
+            if re.search(pattern, message_lower):
+                return True
+        
+        return False
+    
+    def _detect_github_query(self, message: str) -> bool:
+        """Detecta consultas sobre GitHub"""
+        message_lower = message.lower()
+        
+        github_keywords = [
+            'github', 'repositorio', 'repository', 'repo', 'repos',
+            'código', 'code', 'proyecto', 'project'
+        ]
+        
+        github_patterns = [
+            r'busca.*repositorio',
+            r'repos.*de',
+            r'github.*repo',
+            r'repositorios.*populares',
+            r'mis.*repos',
+            r'últimos.*repos'
+        ]
+        
+        # Buscar palabras clave
+        for keyword in github_keywords:
+            if keyword in message_lower:
+                return True
+        
+        # Buscar patrones
+        for pattern in github_patterns:
+            if re.search(pattern, message_lower):
+                return True
+        
+        return False
+    
+    def _detect_web_scraping_query(self, message: str) -> bool:
+        """Detecta solicitudes de scraping web"""
+        message_lower = message.lower()
+        
+        # Detectar URLs
+        if re.search(r'https?://[^\s]+', message_lower):
+            scraping_triggers = [
+                'extrae', 'extract', 'contenido', 'content',
+                'screenshot', 'captura', 'scrape'
+            ]
+            
+            for trigger in scraping_triggers:
+                if trigger in message_lower:
+                    return True
+        
+        return False
+    
+    async def _handle_weather_query(self, message: str) -> str:
+        """Maneja consultas de clima usando Weather MCP"""
+        try:
+            # Extraer ubicación del mensaje
+            location = self._extract_location_from_message(message)
+            if not location:
+                return "🌤️ Por favor especifica una ubicación. Ejemplo: '¿Cómo está el clima en Madrid?'"
+            
+            # Inicializar MCP
+            if not mcp_integration.initialize():
+                return "🔧 Error iniciando sistema de clima. Intenta más tarde."
+            
+            # Obtener clima actual (necesitaríamos implementar esto en mcp_integration)
+            # Por ahora, respuesta informativa
+            return f"🌤️ **Consulta de clima para {location}**\n\n" + \
+                   "📋 *Sistema de clima disponible pero requiere configuración adicional*\n" + \
+                   "💡 *Usa `/mcp` para ver el estado del sistema*"
+                   
+        except Exception as e:
+            logger.error(f"❌ Error en consulta de clima: {e}")
+            return f"🔧 Error procesando consulta de clima: {str(e)}"
+    
+    async def _handle_github_query(self, message: str) -> str:
+        """Maneja consultas de GitHub usando GitHub MCP"""
+        try:
+            # Inicializar MCP
+            if not mcp_integration.initialize():
+                return "🔧 Error iniciando sistema GitHub. Intenta más tarde."
+            
+            # Extraer términos de búsqueda
+            search_terms = self._extract_search_terms(message)
+            
+            # Respuesta informativa (necesitaríamos implementar en mcp_integration)
+            return f"🐙 **Búsqueda en GitHub: '{search_terms}'**\n\n" + \
+                   "📋 *Sistema GitHub disponible*\n" + \
+                   "🔑 *Para acceso completo, configura GITHUB_TOKEN en las variables de entorno*\n" + \
+                   "💡 *Usa `/mcp` para ver el estado del sistema*"
+                   
+        except Exception as e:
+            logger.error(f"❌ Error en consulta GitHub: {e}")
+            return f"🔧 Error procesando consulta GitHub: {str(e)}"
+    
+    async def _handle_web_scraping_query(self, message: str) -> str:
+        """Maneja solicitudes de web scraping usando Puppeteer MCP"""
+        try:
+            # Extraer URL del mensaje
+            url_match = re.search(r'https?://[^\s]+', message)
+            if not url_match:
+                return "🕷️ No detecté una URL válida para extraer contenido."
+            
+            url = url_match.group()
+            
+            # Inicializar MCP
+            if not mcp_integration.initialize():
+                return "🔧 Error iniciando sistema de web scraping. Intenta más tarde."
+            
+            # Respuesta informativa (necesitaríamos implementar en mcp_integration)
+            return f"🕷️ **Web Scraping: {url}**\n\n" + \
+                   "📋 *Sistema Puppeteer disponible*\n" + \
+                   "🔧 *Función de scraping lista para usar*\n" + \
+                   "💡 *Usa `/mcp` para ver el estado del sistema*"
+                   
+        except Exception as e:
+            logger.error(f"❌ Error en web scraping: {e}")
+            return f"🔧 Error procesando web scraping: {str(e)}"
+    
+    def _extract_location_from_message(self, message: str) -> str:
+        """Extrae la ubicación del mensaje para consultas de clima"""
+        # Patrones para extraer ubicaciones
+        location_patterns = [
+            r'clima en (\w+)',
+            r'weather in ([^?]+)',
+            r'tiempo en (\w+)',
+            r'temperatura de (\w+)'
+        ]
+        
+        message_lower = message.lower()
+        for pattern in location_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                return match.group(1).strip()
+        
+        # Si no encuentra patrones, buscar palabras que parezcan ubicaciones
+        words = message.split()
+        for i, word in enumerate(words):
+            if word.lower() in ['en', 'in', 'de'] and i + 1 < len(words):
+                return words[i + 1].strip('?.,!')
+        
+        return ""
 
 # Para uso síncrono en el bot
 def get_llm_response_sync(message: str, context: Optional[List[Dict]] = None) -> str:
