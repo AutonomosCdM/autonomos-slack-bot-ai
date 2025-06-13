@@ -1,0 +1,19 @@
+{
+  "name": "autonomos-dona-bot",
+  "version": "1.0.0",
+  "description": "Slack bot with AI capabilities and MCP integration",
+  "main": "start.py",
+  "scripts": {
+    "build": "cd dona-mcp-toolbox && npm install",
+    "postinstall": "cd dona-mcp-toolbox && npm install"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AutonomosCdM/autonomos-slack-bot-ai.git"
+  },
+  "author": "Autonomos Team",
+  "license": "MIT"
+}
