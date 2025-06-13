@@ -19,6 +19,7 @@ from canvas_manager import canvas_manager
 
 # Importar integración MCP
 from mcp_integration import mcp_integration
+from mcp_health_monitor import initialize_health_monitor, health_monitor
 
 # Cargar variables de entorno
 load_dotenv()
@@ -845,6 +846,50 @@ def handle_debug_command(ack, body, respond):
         respond({
             "response_type": "ephemeral",
             "text": f"❌ Error ejecutando debug: {str(e)}"
+        })
+
+@app.command("/health")
+def handle_health_command(ack, body, respond):
+    """Comando slash para estado de salud del sistema"""
+    try:
+        ack()
+        
+        logger.info(f"🩺 Health check solicitado por {body['user_id']}")
+        
+        # Obtener estado del monitor MCP
+        if health_monitor:
+            health_report = health_monitor.get_health_report()
+            
+            status_icon = "✅" if health_report["healthy"] else "❌"
+            monitoring_icon = "🔍" if health_report["monitoring_active"] else "⏸️"
+            
+            response = f"🩺 **Sistema de Salud**\n\n"
+            response += f"**MCP Status**: {status_icon} {'Saludable' if health_report['healthy'] else 'Con problemas'}\n"
+            response += f"**Monitoreo**: {monitoring_icon} {'Activo' if health_report['monitoring_active'] else 'Inactivo'}\n"
+            response += f"**Uptime**: {health_report['uptime_formatted']}\n"
+            response += f"**Checks realizados**: {health_report['total_checks']}\n"
+            response += f"**Fallos consecutivos**: {health_report['consecutive_failures']}\n"
+            
+            if health_report["node_path"]:
+                response += f"**Node.js**: {health_report['node_path']}\n"
+            
+            if not health_report["healthy"] and health_report["consecutive_failures"] > 0:
+                response += "\n⚠️ **Sistema con problemas detectados**\n"
+                response += "• Usa `/debug` para diagnóstico detallado\n"
+                response += "• El sistema intentará auto-recuperarse\n"
+        else:
+            response = "❌ **Monitor de salud no disponible**\n\nEl sistema no pudo inicializar el monitor de salud MCP."
+        
+        respond({
+            "response_type": "ephemeral",
+            "text": response
+        })
+        
+    except Exception as e:
+        logger.error(f"Error en comando health: {e}")
+        respond({
+            "response_type": "ephemeral",
+            "text": f"❌ Error obteniendo estado de salud: {str(e)}"
         })
 
 # ============================================================================

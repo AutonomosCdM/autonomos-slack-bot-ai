@@ -68,6 +68,18 @@ def run_bot_with_retry(max_retries: int = 5, retry_delay: int = 30) -> None:
     global shutdown_requested
     
     app = create_bot_app()
+    
+    # Inicializar monitor de salud MCP
+    try:
+        from mcp_integration import mcp_integration
+        from mcp_health_monitor import initialize_health_monitor
+        
+        monitor = initialize_health_monitor(mcp_integration)
+        monitor.start_monitoring(interval=300)  # Check cada 5 minutos
+        logger.info("🔍 MCP Health Monitor iniciado")
+    except Exception as e:
+        logger.warning(f"⚠️ No se pudo inicializar MCP Health Monitor: {e}")
+    
     retry_count = 0
     
     while not shutdown_requested and retry_count < max_retries:
