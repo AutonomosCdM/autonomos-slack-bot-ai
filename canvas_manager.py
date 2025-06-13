@@ -6,6 +6,7 @@ Maneja creación automática de resúmenes, documentación y knowledge base
 
 import json
 import logging
+import requests
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
@@ -166,23 +167,25 @@ class CanvasManager:
                 channel_name=channel_name
             )
             
-            # Crear Canvas
-            canvas_response = client.canvases_create(
-                title=f"{template.emoji} Resumen - {channel_name}",
-                document_content={
-                    "type": "markdown",
-                    "markdown": content
-                }
+            # Crear Canvas usando API REST directa
+            logger.info(f"🎨 Intentando crear Canvas...")
+            
+            canvas_response = self._create_canvas_via_api(
+                client=client,
+                content=content,
+                title=f"{template.emoji} Resumen - {channel_name}"
             )
             
-            logger.info(f"✅ Canvas de resumen creado: {canvas_response.get('canvas_id')}")
-            return {
-                "success": True,
-                "canvas_id": canvas_response.get("canvas_id"),
-                "canvas_url": canvas_response.get("url"),
-                "title": f"{template.emoji} Resumen - {channel_name}",
-                "type": "summary"
-            }
+            if canvas_response.get("success"):
+                return {
+                    "success": True,
+                    "canvas_id": canvas_response["canvas_id"],
+                    "canvas_url": canvas_response["canvas_url"],
+                    "title": f"{template.emoji} Resumen - {channel_name}",
+                    "type": "summary"
+                }
+            else:
+                return {"success": False, "error": canvas_response.get("error", "Unknown error")}
             
         except Exception as e:
             logger.error(f"❌ Error creando Canvas de resumen: {e}")
@@ -220,22 +223,24 @@ class CanvasManager:
                 contributors="*(Automático - Lista de contribuidores)*"
             )
             
-            canvas_response = client.canvases_create(
-                title=f"{template.emoji} {topic} - Knowledge Base",
-                document_content={
-                    "type": "markdown", 
-                    "markdown": content
-                }
+            logger.info(f"🧠 Intentando crear Knowledge Base...")
+            
+            canvas_response = self._create_canvas_via_api(
+                client=client,
+                content=content,
+                title=f"{template.emoji} {topic} - Knowledge Base"
             )
             
-            logger.info(f"✅ Knowledge base creado: {canvas_response.get('canvas_id')}")
-            return {
-                "success": True,
-                "canvas_id": canvas_response.get("canvas_id"),
-                "canvas_url": canvas_response.get("url"),
-                "title": f"{template.emoji} {topic} - Knowledge Base",
-                "type": "knowledge"
-            }
+            if canvas_response.get("success"):
+                return {
+                    "success": True,
+                    "canvas_id": canvas_response["canvas_id"],
+                    "canvas_url": canvas_response["canvas_url"],
+                    "title": f"{template.emoji} {topic} - Knowledge Base",
+                    "type": "knowledge"
+                }
+            else:
+                return {"success": False, "error": canvas_response.get("error", "Unknown error")}
             
         except Exception as e:
             logger.error(f"❌ Error creando knowledge base: {e}")
@@ -266,22 +271,22 @@ class CanvasManager:
                 estimated_completion="*(Estimación pendiente)*"
             )
             
-            canvas_response = client.canvases_create(
-                title=f"{template.emoji} {project_name}",
-                document_content={
-                    "type": "markdown",
-                    "markdown": content
-                }
+            canvas_response = self._create_canvas_via_api(
+                client=client,
+                content=content,
+                title=f"{template.emoji} {project_name}"
             )
             
-            logger.info(f"✅ Documentación de proyecto creada: {canvas_response.get('canvas_id')}")
-            return {
-                "success": True,
-                "canvas_id": canvas_response.get("canvas_id"),
-                "canvas_url": canvas_response.get("url"),
-                "title": f"{template.emoji} {project_name}",
-                "type": "project"
-            }
+            if canvas_response.get("success"):
+                return {
+                    "success": True,
+                    "canvas_id": canvas_response["canvas_id"],
+                    "canvas_url": canvas_response["canvas_url"],
+                    "title": f"{template.emoji} {project_name}",
+                    "type": "project"
+                }
+            else:
+                return {"success": False, "error": canvas_response.get("error", "Unknown error")}
             
         except Exception as e:
             logger.error(f"❌ Error creando documentación de proyecto: {e}")
@@ -404,6 +409,66 @@ class CanvasManager:
         except Exception as e:
             logger.error(f"❌ Error extrayendo recursos: {e}")
             return "- *(Error procesando recursos)*"
+    
+    def _create_canvas_via_api(self, client, content: str, title: str) -> Dict:
+        """Crear Canvas usando API REST directa (bypass SDK)"""
+        try:
+            # Obtener token del cliente
+            token = client.token
+            
+            # API endpoint
+            url = "https://slack.com/api/canvases.create"
+            
+            # Headers
+            headers = {
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json"
+            }
+            
+            # Payload
+            payload = {
+                "document_content": {
+                    "type": "markdown",
+                    "markdown": content
+                }
+            }
+            
+            logger.info(f"🌐 Llamando Canvas API directamente...")
+            logger.info(f"🔗 URL: {url}")
+            
+            # Hacer request
+            response = requests.post(url, headers=headers, json=payload)
+            
+            logger.info(f"📊 Status code: {response.status_code}")
+            logger.info(f"📋 Response: {response.text[:500]}...")
+            
+            if response.status_code == 200:
+                data = response.json()
+                
+                if data.get("ok"):
+                    canvas_id = data.get("canvas_id")
+                    canvas_url = data.get("url")
+                    
+                    logger.info(f"✅ Canvas creado exitosamente!")
+                    logger.info(f"🆔 Canvas ID: {canvas_id}")
+                    logger.info(f"🔗 Canvas URL: {canvas_url}")
+                    
+                    return {
+                        "success": True,
+                        "canvas_id": canvas_id,
+                        "canvas_url": canvas_url
+                    }
+                else:
+                    error = data.get("error", "Unknown error")
+                    logger.error(f"❌ Slack API error: {error}")
+                    return {"success": False, "error": f"Slack API error: {error}"}
+            else:
+                logger.error(f"❌ HTTP error: {response.status_code}")
+                return {"success": False, "error": f"HTTP {response.status_code}"}
+                
+        except Exception as e:
+            logger.error(f"❌ Error en Canvas API: {e}")
+            return {"success": False, "error": str(e)}
 
 # Instancia global
 canvas_manager = CanvasManager()

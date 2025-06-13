@@ -1,76 +1,76 @@
 {
-  "display_information": {
-    "name": "Dona - Asistente AI",
-    "description": "Bot inteligente con memoria y capacidades avanzadas",
-    "background_color": "#2c3e50"
-  },
-  "features": {
-    "app_home": {
-      "home_tab_enabled": false,
-      "messages_tab_enabled": true,
-      "messages_tab_read_only_enabled": false
+    "display_information": {
+        "name": "Dona - Asistente AI",
+        "description": "Bot inteligente con memoria y capacidades avanzadas",
+        "background_color": "#2c3e50"
     },
-    "bot_user": {
-      "display_name": "Dona",
-      "always_online": true
+    "features": {
+        "app_home": {
+            "home_tab_enabled": false,
+            "messages_tab_enabled": true,
+            "messages_tab_read_only_enabled": false
+        },
+        "bot_user": {
+            "display_name": "Dona",
+            "always_online": true
+        },
+        "slash_commands": [
+            {
+                "command": "/hello",
+                "url": "https://dummy-url.com/slack/commands",
+                "description": "Saluda y obt\u00e9n ayuda del bot",
+                "usage_hint": "[mensaje opcional]"
+            },
+            {
+                "command": "/memory",
+                "url": "https://dummy-url.com/slack/commands",
+                "description": "Ver estad\u00edsticas de memoria del bot",
+                "usage_hint": ""
+            },
+            {
+                "command": "/provider",
+                "url": "https://dummy-url.com/slack/commands",
+                "description": "Ver proveedor de IA activo",
+                "usage_hint": ""
+            },
+            {
+                "command": "/canvas",
+                "url": "https://dummy-url.com/slack/commands",
+                "description": "Crear resumen inteligente en Canvas",
+                "usage_hint": "[tema]"
+            }
+        ]
     },
-    "slash_commands": [
-      {
-        "command": "/hello",
-        "url": "https://dummy-url.com/slack/commands",
-        "description": "Saluda y obtén ayuda del bot",
-        "usage_hint": "[mensaje opcional]"
-      },
-      {
-        "command": "/memory",
-        "url": "https://dummy-url.com/slack/commands", 
-        "description": "Ver estadísticas de memoria del bot",
-        "usage_hint": ""
-      },
-      {
-        "command": "/provider",
-        "url": "https://dummy-url.com/slack/commands",
-        "description": "Ver proveedor de IA activo",
-        "usage_hint": ""
-      },
-      {
-        "command": "/canvas",
-        "url": "https://dummy-url.com/slack/commands",
-        "description": "Crear resumen inteligente en Canvas",
-        "usage_hint": "[tema]"
-      }
-    ]
-  ],
-  "oauth_config": {
-    "scopes": {
-      "bot": [
-        "app_mentions:read",
-        "channels:history",
-        "chat:write",
-        "im:history",
-        "im:read",
-        "im:write",
-        "commands",
-        "reactions:read",
-        "reactions:write",
-        "canvases:write"
-      ]
+    "oauth_config": {
+        "scopes": {
+            "bot": [
+                "app_mentions:read",
+                "channels:history",
+                "chat:write",
+                "im:history",
+                "im:read",
+                "im:write",
+                "commands",
+                "reactions:read",
+                "reactions:write",
+                "canvases:write"
+            ]
+        }
+    },
+    "settings": {
+        "event_subscriptions": {
+            "bot_events": [
+                "app_mention",
+                "message.im",
+                "message.channels",
+                "reaction_added"
+            ]
+        },
+        "interactivity": {
+            "is_enabled": true
+        },
+        "org_deploy_enabled": false,
+        "socket_mode_enabled": true,
+        "token_rotation_enabled": false
     }
-  },
-  "settings": {
-    "event_subscriptions": {
-      "bot_events": [
-        "app_mention",
-        "message.im",
-        "message.channels",
-        "reaction_added"
-      ]
-    },
-    "interactivity": {
-      "is_enabled": true
-    },
-    "org_deploy_enabled": false,
-    "socket_mode_enabled": true,
-    "token_rotation_enabled": false
-  }
 }
