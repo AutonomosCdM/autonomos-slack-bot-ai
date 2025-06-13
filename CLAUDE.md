@@ -28,8 +28,11 @@ python app.py
 
 ### Development Setup
 ```bash
-# Install dependencies
+# Install Python dependencies
 pip install -r requirements.txt
+
+# Install Node.js dependencies for MCP toolbox
+cd dona-mcp-toolbox && npm install && cd ..
 
 # Configure environment
 cp .env.example .env
@@ -41,6 +44,16 @@ python test_quick_wins.py
 # Test individual components
 python test_ai.py           # LLM integration
 python test_message.py      # Bot connectivity
+```
+
+### Build Commands (Production)
+```bash
+# Complete build process (used by Render)
+./build.sh
+
+# Manual build steps
+pip install -r requirements.txt
+cd dona-mcp-toolbox && npm install && cd ..
 ```
 
 ### Testing Commands
@@ -115,6 +128,7 @@ npm run dev
 5. **MCP Integration**: Model Context Protocol toolbox for external capabilities
    - **ArXiv Integration** (`mcp_integration.py`): Scientific paper search and retrieval
    - **Node.js Bridge**: Python-to-Node.js bridge for MCP toolbox access
+   - **Automatic Detection**: Natural language detection for ArXiv, Weather, GitHub, and Web scraping
    - **Research Commands**: `/papers`, `/mcp` slash commands for scientific research
    - **Smart Formatting**: Automatic Slack-optimized formatting for research results
 
@@ -125,8 +139,19 @@ npm run dev
 
 7. **Architecture Flow**:
    ```
-   Slack Event → Socket Mode → Memory Logging → Context Analysis → [MCP Research] → LLM Processing → Enhanced Response
+   Slack Event → Socket Mode → Memory Logging → Context Analysis → [Automatic MCP Detection] → [MCP Research/LLM Processing] → Enhanced Response
    ```
+
+### Automatic MCP Detection System
+
+The bot automatically detects user intent and routes to appropriate MCP capabilities without requiring slash commands:
+
+- **ArXiv**: "busca papers sobre...", "research on...", "artículos de machine learning"
+- **Weather**: "clima en Madrid", "weather in London", "temperatura de Barcelona"  
+- **GitHub**: "mis repos", "repositorios populares", "dame repos de Python"
+- **Web Scraping**: "extrae contenido de URL", "screenshot de https://..."
+
+Detection happens in `llm_handler_production.py` using keyword matching and regex patterns for Spanish and English.
 
 ### Critical Configuration
 
@@ -195,8 +220,19 @@ The bot is optimized for **Render.com** deployment:
 ### Critical Files for Production
 - `start.py`: Robust launcher with health checks and auto-reconnection
 - `app_ai_production.py`: Streamlined production bot (OpenRouter only)
-- `llm_handler_production.py`: Production-optimized LLM integration
+- `llm_handler_production.py`: Production-optimized LLM integration with automatic MCP detection
+- `build.sh`: Build script that installs Python + Node.js dependencies
+- `package.json`: Node.js configuration for MCP toolbox
 - `requirements.txt`: Pinned dependencies for stability
+
+### Render.com Configuration
+```bash
+# Build Command
+./build.sh
+
+# Start Command  
+python start.py
+```
 
 ### Production vs Development
 - **Production**: Uses single LLM provider (OpenRouter) for simplicity and cost control
@@ -260,8 +296,50 @@ dona-mcp-toolbox/
 
 ### MCP Integration Flow
 ```
-Slack Command → Python Handler → mcp_integration.py → Node.js Subprocess → MCP Module → External API → Response Processing → Slack Response
+Slack Message → Intent Detection → mcp_integration.py → Node.js Subprocess → MCP Module → External API → Response Processing → Slack Response
 ```
+
+### Troubleshooting MCP Issues
+
+Common issues and solutions:
+
+1. **"Error iniciando sistema" messages in Slack**:
+   This indicates MCP initialization is failing. Run diagnostics:
+   ```bash
+   # Quick diagnosis
+   python diagnose_mcp.py
+   
+   # Full diagnosis
+   python test_mcp_production.py
+   ```
+
+2. **Node.js dependencies missing in production**:
+   - Ensure `build.sh` is set as Build Command in Render
+   - Check that `npm install` runs in `dona-mcp-toolbox/` during build
+   - Verify build logs show "✅ MCP dependencies installed"
+
+3. **MCP initialization fails locally**:
+   ```bash
+   # Test Node.js availability
+   which node
+   
+   # Test MCP toolbox directly
+   cd dona-mcp-toolbox && npm test
+   
+   # Test Python integration
+   python -c "from mcp_integration import mcp_integration; print(mcp_integration.initialize())"
+   ```
+
+4. **Detection not working**:
+   - Check logs for "🔬", "🌤️", "🐙", "🕷️" detection messages
+   - Verify keywords in detection methods match user input
+   - Test with explicit examples from detection patterns
+
+5. **Production deployment issues**:
+   - Verify Render build command is set to: `./build.sh`
+   - Check Render build logs for Node.js installation
+   - Ensure both Python and Node.js environments are available
+   - Run `python diagnose_mcp.py` after deployment to verify setup
 
 ## Key Design Decisions
 
@@ -273,3 +351,4 @@ Slack Command → Python Handler → mcp_integration.py → Node.js Subprocess �
 6. **Canvas Direct API**: Bypass SDK limitations with direct REST calls
 7. **MCP Hybrid Architecture**: Python-Node.js bridge for extending capabilities
 8. **Graceful Degradation**: System functions even if Redis or MCP components are unavailable
+9. **Automatic MCP Routing**: Natural language intent detection eliminates need for slash commands

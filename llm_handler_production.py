@@ -167,8 +167,10 @@ class ProductionLLMHandler:
             logger.info(f"🔍 Términos extraídos: {search_query}")
             
             # Inicializar MCP si no está listo
-            if not mcp_integration.initialize():
-                return "🔧 Error iniciando sistema de búsqueda científica. Intenta más tarde."
+            init_result = mcp_integration.initialize()
+            if not init_result:
+                logger.error("❌ MCP initialization failed for scientific query")
+                return "🔧 Error iniciando sistema de búsqueda científica (MCP no disponible). Intenta más tarde."
             
             # Buscar papers usando MCP
             result = mcp_integration.search_papers(search_query, max_results=5)
@@ -320,7 +322,8 @@ class ProductionLLMHandler:
             
             # Inicializar MCP
             if not mcp_integration.initialize():
-                return "🔧 Error iniciando sistema de clima. Intenta más tarde."
+                logger.error("❌ MCP initialization failed for weather query")
+                return "🔧 Error iniciando sistema de clima (MCP no disponible). Intenta más tarde."
             
             # Obtener clima actual (necesitaríamos implementar esto en mcp_integration)
             # Por ahora, respuesta informativa
@@ -337,7 +340,8 @@ class ProductionLLMHandler:
         try:
             # Inicializar MCP
             if not mcp_integration.initialize():
-                return "🔧 Error iniciando sistema GitHub. Intenta más tarde."
+                logger.error("❌ MCP initialization failed for GitHub query")
+                return "🔧 Error iniciando sistema GitHub (MCP no disponible). Intenta más tarde."
             
             # Extraer términos de búsqueda
             search_terms = self._extract_search_terms(message)
@@ -364,7 +368,8 @@ class ProductionLLMHandler:
             
             # Inicializar MCP
             if not mcp_integration.initialize():
-                return "🔧 Error iniciando sistema de web scraping. Intenta más tarde."
+                logger.error("❌ MCP initialization failed for web scraping query")
+                return "🔧 Error iniciando sistema de web scraping (MCP no disponible). Intenta más tarde."
             
             # Respuesta informativa (necesitaríamos implementar en mcp_integration)
             return f"🕷️ **Web Scraping: {url}**\n\n" + \

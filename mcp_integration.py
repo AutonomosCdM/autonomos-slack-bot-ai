@@ -18,8 +18,31 @@ class MCPIntegration:
     
     def __init__(self):
         self.mcp_path = os.path.join(os.path.dirname(__file__), "dona-mcp-toolbox")
-        self.node_executable = "node"
+        self.node_executable = self._find_node_executable()
         self.initialized = False
+    
+    def _find_node_executable(self) -> str:
+        """Find Node.js executable in different environments"""
+        # Common Node.js paths
+        node_paths = [
+            "node",                    # Standard PATH
+            "/usr/bin/node",           # Ubuntu/Debian
+            "/usr/local/bin/node",     # MacOS/Homebrew
+            "/opt/render/project/bin/node",  # Render.com
+            "/app/bin/node",           # Heroku-style
+        ]
+        
+        for node_path in node_paths:
+            try:
+                result = subprocess.run([node_path, "--version"], 
+                                     capture_output=True, check=True, text=True)
+                logger.info(f"✅ Found Node.js at: {node_path} (version: {result.stdout.strip()})")
+                return node_path
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                continue
+        
+        logger.warning("⚠️ Using default 'node' executable (may fail in production)")
+        return "node"
         
     def _run_mcp_command(self, script: str, timeout: int = 30) -> Dict:
         """Ejecutar comando MCP vía Node.js"""
@@ -64,15 +87,18 @@ class MCPIntegration:
             
             # Verificar que existe el directorio MCP
             if not os.path.exists(self.mcp_path):
-                logger.error(f"MCP directory not found: {self.mcp_path}")
+                logger.error(f"❌ MCP directory not found: {self.mcp_path}")
                 return False
+            
+            logger.info(f"✅ MCP directory found: {self.mcp_path}")
             
             # Verificar Node.js
             try:
-                subprocess.run([self.node_executable, "--version"], 
-                             capture_output=True, check=True)
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                logger.error("Node.js not found or not working")
+                result = subprocess.run([self.node_executable, "--version"], 
+                                     capture_output=True, check=True, text=True)
+                logger.info(f"✅ Node.js version: {result.stdout.strip()}")
+            except (subprocess.CalledProcessError, FileNotFoundError) as e:
+                logger.error(f"❌ Node.js not found or not working: {e}")
                 return False
             
             # Test básico de MCP
@@ -91,14 +117,17 @@ class MCPIntegration:
             })();
             """
             
+            logger.info("🧪 Testing MCP initialization...")
             result = self._run_mcp_command(script)
+            logger.info(f"🔍 MCP test result: {result}")
             
             if result.get("success"):
                 self.initialized = True
                 logger.info("✅ MCP integration initialized successfully")
                 return True
             else:
-                logger.error(f"MCP initialization failed: {result.get('error')}")
+                error_msg = result.get('error', 'Unknown error')
+                logger.error(f"❌ MCP initialization failed: {error_msg}")
                 return False
                 
         except Exception as e:
